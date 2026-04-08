@@ -2,6 +2,7 @@
   "name": "@silver886/mcp-proxy-mcp",
   "private": true,
   "scripts": {
+    "prebuild": "node -e \"const p=require('../package.json'); require('fs').writeFileSync('src/shared/generated.ts', 'export const PACKAGE_NAME = ' + JSON.stringify(p.name) + ';\\nexport const PACKAGE_VERSION = ' + JSON.stringify(p.version) + ';\\n')\"",
     "build": "tsc"
   },
   "devDependencies": {

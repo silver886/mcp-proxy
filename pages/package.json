@@ -2,7 +2,10 @@
   "name": "@silver886/mcp-proxy-pages",
   "private": true,
   "scripts": {
-    "dev": "wrangler pages dev public --kv MCP_CONFIG",
+    "prebuild": "node -e \"const p=require('../package.json'); require('fs').writeFileSync('functions/generated.ts', 'export const PACKAGE_NAME = ' + JSON.stringify(p.name) + ';\\nexport const PACKAGE_VERSION = ' + JSON.stringify(p.version) + ';\\n')\"",
+    "build": "node -e \"\"",
+    "dev": "pnpm run prebuild && wrangler pages dev public --kv MCP_CONFIG",
+    "predeploy": "pnpm run prebuild",
     "deploy": "wrangler pages deploy public --project-name mcp-proxy"
   },
   "devDependencies": {

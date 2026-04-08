@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes, webcrypto } from "node:crypto";
-import { DEFAULT_PAGES_URL, ErrorCode, LineBuffer, getArg, jsonRpcError } from "./shared/protocol.js";
+import { PACKAGE_NAME, PACKAGE_VERSION, DEFAULT_PAGES_URL, ErrorCode, LineBuffer, getArg, jsonRpcError } from "./shared/protocol.js";
 
 const POLL_INTERVAL = 2000; // ms
 const TOOL_SEPARATOR = "__";
@@ -165,7 +165,7 @@ class ProxyServer {
         this.sendResult(id, {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "mcp-proxy", version: "0.1.0" },
+          serverInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
         });
         return;
 
@@ -289,7 +289,7 @@ class ProxyServer {
           params: {
             protocolVersion: "2024-11-05",
             capabilities: {},
-            clientInfo: { name: "mcp-proxy", version: "0.1.0" },
+            clientInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
           },
         }),
       });

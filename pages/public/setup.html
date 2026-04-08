@@ -60,6 +60,9 @@
   </div>
 
   <script>
+    let PACKAGE_NAME = 'mcp-proxy-setup'; // overridden by /api/config
+    let PACKAGE_VERSION = 'unknown'; // overridden by /api/config
+
     // --- Parse hash params ---
     const hashParams = new URLSearchParams(location.hash.slice(1));
     const code = hashParams.get('code');
@@ -147,8 +150,14 @@
       return resp;
     }
 
-    // --- Init: load seeded config ---
+    // --- Init: load page config + seeded pairing config ---
     (async () => {
+      try {
+        const cfg = await (await fetch('/api/config')).json();
+        if (cfg.name) PACKAGE_NAME = cfg.name;
+        if (cfg.version) PACKAGE_VERSION = cfg.version;
+      } catch {}
+
       await initCrypto();
 
       try {
@@ -199,7 +208,7 @@
           try {
             const initResp = await hostFetch('POST', `/servers/${name}`, {
               jsonrpc: '2.0', id: `init-${name}`, method: 'initialize',
-              params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'mcp-proxy-setup', version: '0.1.0' } }
+              params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION } }
             });
             const sessionId = initResp.headers.get('Mcp-Session-Id');
             const sessionHeaders = sessionId ? { 'Mcp-Session-Id': sessionId } : undefined;

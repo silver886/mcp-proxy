@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as nodeCreateServer } from "node:http";
 
+export { PACKAGE_NAME, PACKAGE_VERSION } from "./generated.js";
+
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 6270;
 export const DEFAULT_PAGES_URL = "https://mcp-proxy.pages.dev";
