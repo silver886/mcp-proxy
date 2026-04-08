@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP Proxy – Setup</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="card">
+    <h1>MCP Proxy Setup</h1>
+    <p>Pairing code: <span class="code" id="code"></span></p>
+    <p class="desc">Enter the tunnel URL from your host agent and the MCP server to connect to.</p>
+
+    <div id="form-section">
+      <form id="config-form">
+        <label for="tunnelUrl">Tunnel URL</label>
+        <input type="url" id="tunnelUrl" name="tunnelUrl"
+               placeholder="https://abc-xyz.trycloudflare.com" required>
+        <p class="hint">Printed by the host agent when started with --tunnel</p>
+
+        <label for="serverName">Server name</label>
+        <input type="text" id="serverName" name="serverName"
+               placeholder="chrome-devtools" required>
+        <p class="hint">Must match a server name in your host agent config.json</p>
+
+        <button type="submit" id="submit-btn">Save &amp; Connect</button>
+      </form>
+    </div>
+
+    <div id="result-section" style="display: none"></div>
+  </div>
+
+  <script>
+    const code = new URLSearchParams(window.location.search).get('code') ||
+                 window.location.pathname.split('/').pop();
+
+    document.getElementById('code').textContent = code;
+
+    const form = document.getElementById('config-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const formSection = document.getElementById('form-section');
+    const resultSection = document.getElementById('result-section');
+
+    // Check if already configured
+    (async () => {
+      try {
+        const resp = await fetch(`/api/config/${code}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          showSuccess(data);
+        }
+      } catch {}
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+      const tunnelUrl = document.getElementById('tunnelUrl').value.replace(/\/+$/, '');
+      const serverName = document.getElementById('serverName').value.trim();
+
+      try {
+        const resp = await fetch(`/api/config/${code}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tunnelUrl, serverName }),
+        });
+
+        if (resp.ok) {
+          showSuccess({ tunnelUrl, serverName });
+        } else {
+          const err = await resp.json();
+          showError(err.error || 'Failed to save');
+        }
+      } catch (err) {
+        showError(err.message);
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save & Connect';
+    });
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function showSuccess(data) {
+      formSection.style.display = 'none';
+      resultSection.style.display = 'block';
+      resultSection.innerHTML = `
+        <div class="banner ok">
+          Configuration saved!<br>
+          <strong>${esc(data.serverName)}</strong> via <strong>${esc(data.tunnelUrl)}</strong><br><br>
+          Return to your terminal — the proxy will connect automatically.
+        </div>
+        <button onclick="reconfigure()" style="margin-top: 1rem; background: #475569;">
+          Reconfigure
+        </button>
+      `;
+    }
+
+    function showError(msg) {
+      resultSection.style.display = 'block';
+      resultSection.innerHTML = `<div class="banner error">${esc(msg)}</div>`;
+      setTimeout(() => { resultSection.style.display = 'none'; }, 4000);
+    }
+
+    function reconfigure() {
+      formSection.style.display = 'block';
+      resultSection.style.display = 'none';
+    }
+  </script>
+</body>
+</html>

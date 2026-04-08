@@ -1,0 +1,11 @@
+{
+  "name": "@silver886/mcp-proxy-mcp",
+  "private": true,
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0"
+  }
+}

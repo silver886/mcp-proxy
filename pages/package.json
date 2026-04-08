@@ -1,0 +1,12 @@
+{
+  "name": "@silver886/mcp-proxy-pages",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --kv MCP_CONFIG",
+    "deploy": "wrangler pages deploy public --project-name mcp-proxy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "@cloudflare/workers-types": "^4.0.0"
+  }
+}

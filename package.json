@@ -1,0 +1,31 @@
+{
+  "name": "@silver886/mcp-proxy",
+  "version": "0.1.0",
+  "description": "MCP proxy bridge: forward MCP requests across network boundaries via Cloudflare tunnel",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "proxy",
+    "tunnel",
+    "cloudflare-tunnel",
+    "remote",
+    "wsl",
+    "docker"
+  ],
+  "bin": {
+    "host": "mcp/dist/host.js",
+    "proxy": "mcp/dist/proxy.js"
+  },
+  "files": [
+    "mcp/dist"
+  ],
+  "scripts": {
+    "build": "pnpm --filter @silver886/mcp-proxy-mcp build",
+    "prepublishOnly": "pnpm run build",
+    "deploy:pages": "pnpm --filter @silver886/mcp-proxy-pages run deploy"
+  },
+  "dependencies": {
+    "cloudflared": "^0.7.1"
+  }
+}

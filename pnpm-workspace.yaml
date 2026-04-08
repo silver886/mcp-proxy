@@ -1,0 +1,9 @@
+packages:
+  - mcp
+  - pages
+
+allowBuilds:
+  cloudflared: true
+  esbuild: true
+  sharp: true
+  workerd: true
