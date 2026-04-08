@@ -47,7 +47,7 @@ Example `config.json`:
 }
 ```
 
-The host agent prints a tunnel URL. Keep it running.
+The host agent prints a tunnel URL and auth token. Keep it running.
 
 ### 2. Configure your MCP client
 
@@ -74,10 +74,10 @@ Add the proxy as a stdio MCP server. The client launches it automatically.
 When the MCP client spawns the proxy, the proxy prints a setup URL to stderr:
 
 ```
-Configure at: https://mcp-proxy.pages.dev/setup/A1B2C3D4
+Configure at: https://mcp-proxy.pages.dev/setup.html#code=...&key=...
 ```
 
-Open the URL in a browser. Enter the tunnel URL from step 1 and the server name (e.g., `chrome-devtools`). The proxy picks up the config automatically and starts forwarding MCP requests.
+Open the URL in a browser. Enter the tunnel URL and auth token from step 1, discover servers, and select tools. The proxy picks up the config automatically and starts forwarding MCP requests.
 
 ## Architecture
 
@@ -87,17 +87,17 @@ Open the URL in a browser. Enter the tunnel URL from step 1 and the server name 
 |-----------|------|---------|
 | **Host Agent** (`host`) | HTTP-to-stdio bridge. Spawns MCP servers, manages sessions, serves MCP Streamable HTTP. | Machine with resources |
 | **Proxy Server** (`proxy`) | Stdio MCP server that forwards requests to the host agent via tunnel. | Machine with MCP client |
-| **Config Page** (Cloudflare Pages) | Device-code pairing. Stores tunnel URL + server name in KV with 15-min TTL. | Cloudflare edge |
+| **Config Page** (Cloudflare Pages) | Device-code pairing. Stores encrypted config in KV with 15-min TTL. | Cloudflare edge |
 
 ### Pairing flow
 
 ```
 1. MCP client spawns the proxy (stdio)
-2. Proxy generates pairing code, polls Pages API
-3. User opens setup URL in browser, enters tunnel URL + server name
-4. Pages stores config in KV
-5. Proxy picks up config, connects to host agent
-6. MCP requests flow: client (stdio) -> proxy -> tunnel -> host agent (stdio) -> real MCP server
+2. Proxy generates pairing code + encryption key, polls Pages RPC
+3. User opens setup URL in browser (code + key in URL hash, never sent to server)
+4. User enters tunnel URL + auth token, discovers servers, selects tools
+5. Setup page encrypts config client-side, stores ciphertext in KV via RPC
+6. Proxy polls, decrypts config, discovers servers, starts forwarding
 ```
 
 ### Protocol
@@ -153,10 +153,10 @@ host [options]
 ```
 proxy [options]
 
---worker-url <url>  Config page URL (default: https://mcp-proxy.pages.dev)
+--pages-url <url>   Config page URL (default: https://mcp-proxy.pages.dev)
 ```
 
-Also reads `MCP_PROXY_WORKER_URL` environment variable.
+Also reads `MCP_PROXY_PAGES_URL` environment variable.
 
 ## Error codes
 

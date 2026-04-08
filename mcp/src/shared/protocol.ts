@@ -3,6 +3,7 @@ import { createServer as nodeCreateServer } from "node:http";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 6270;
+export const DEFAULT_PAGES_URL = "https://mcp-proxy.pages.dev";
 
 // JSON-RPC error codes (-32000 to -32099 = server-defined, -32603 = spec internal error)
 export const ErrorCode = {
@@ -71,7 +72,7 @@ export class LineBuffer {
   }
 }
 
-// Server configuration (used by host-agent)
+// Server configuration (used by host)
 export interface ServerConfig {
   command: string;
   args: string[];

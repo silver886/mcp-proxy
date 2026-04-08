@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Tunnel } from "cloudflared";
 import {
   DEFAULT_HOST,
@@ -149,11 +149,13 @@ class HostAgent {
   private config: HostAgentConfig;
   private sessions = new Map<string, McpSession>();
   private timeout: number;
+  private authToken: string;
 
   constructor(configPath: string, timeout: number) {
     const raw = readFileSync(configPath, "utf-8");
     this.config = JSON.parse(raw) as HostAgentConfig;
     this.timeout = timeout;
+    this.authToken = randomBytes(32).toString("base64url"); // 256-bit token
   }
 
   get port(): number {
@@ -167,17 +169,20 @@ class HostAgent {
     server.listen(this.port, host, () => {
       console.log(`MCP Host Agent listening on http://${host}:${this.port}`);
       console.log(`Available servers: ${Object.keys(this.config.servers).join(", ")}`);
+      console.error(`Auth token: ${this.authToken}`);
     });
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, Accept");
-    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
+    // Auth: validate Bearer token (constant-time comparison)
+    const auth = req.headers.authorization ?? "";
+    const expected = `Bearer ${this.authToken}`;
+    const authBuf = Buffer.from(auth);
+    const expectedBuf = Buffer.from(expected);
+    const authorized = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
+    if (!authorized) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
       return;
     }
 
@@ -185,7 +190,7 @@ class HostAgent {
     if (req.method === "GET" && req.url === "/") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
-        service: "mcp-host-agent",
+        service: "mcp-proxy-host",
         servers: Object.keys(this.config.servers),
       }));
       return;
@@ -353,7 +358,6 @@ function main(): void {
   const configPath = getArg("--config") ?? "config.json";
   const timeout = parseInt(getArg("--timeout") ?? "120000", 10); // 2min default for long tool calls
   const useTunnel = process.argv.includes("--tunnel");
-
   const agent = new HostAgent(configPath, timeout);
   agent.start();
 
