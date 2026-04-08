@@ -1,0 +1,24 @@
+name: Create release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  create-release:
+    name: Create release
+    permissions:
+      contents: write
+    uses: silver886/github-actions/.github/workflows/create-release.yaml@master
+
+  release-npm:
+    name: Release npm package
+    needs: create-release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: silver886/github-actions/.github/workflows/release-npm.yaml@master
+    with:
+      test: false
