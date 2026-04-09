@@ -2,7 +2,10 @@
   "name": "@silver886/mcp-proxy",
   "version": "0.1.2",
   "description": "MCP proxy bridge: forward MCP requests across network boundaries via Cloudflare tunnel",
-  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/silver886/mcp-proxy.git"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -13,6 +16,15 @@
     "wsl",
     "docker"
   ],
+  "author": {
+    "name": "L",
+    "email": "11664880+silver886@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/silver886/mcp-proxy/issues"
+  },
+  "homepage": "https://github.com/silver886/mcp-proxy#readme",
   "bin": {
     "host": "mcp/dist/host.js",
     "proxy": "mcp/dist/proxy.js"
