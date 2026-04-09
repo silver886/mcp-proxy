@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes, webcrypto } from "node:crypto";
-import { PACKAGE_NAME, PACKAGE_VERSION, DEFAULT_PAGES_URL, ErrorCode, LineBuffer, getArg, jsonRpcError } from "./shared/protocol.js";
+import { PACKAGE_NAME, PACKAGE_VERSION, MCP_PROTOCOL_VERSION, DEFAULT_PAGES_URL, ErrorCode, LineBuffer, getArg, jsonRpcError } from "./shared/protocol.js";
 
 const POLL_INTERVAL = 2000; // ms
 const TOOL_SEPARATOR = "__";
@@ -161,7 +161,7 @@ class ProxyServer {
       // initialize always succeeds — proxy is a valid server even before pairing
       case "initialize":
         this.sendResult(id, {
-          protocolVersion: "2024-11-05",
+          protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: true }, prompts: {}, logging: {} },
           serverInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
         });
@@ -172,7 +172,7 @@ class ProxyServer {
         if (!this.config) {
           this.sendResult(id, { tools: [{
             name: "configure",
-            description: "Get the setup URL to pair this MCP proxy with a host agent. Call this tool to see the pairing URL.",
+            description: "Set up or reconfigure the MCP proxy connection. Returns the setup URL.",
             inputSchema: { type: "object", properties: {} },
           }] });
           return;
@@ -185,17 +185,16 @@ class ProxyServer {
       case "prompts/list":
         this.sendResult(id, { prompts: [{
           name: "configure",
-          description: this.config
-            ? "Reconfigure the MCP proxy (change tunnel URL, auth token, or tool selection)"
-            : "Get the setup URL to pair this MCP proxy with a host agent",
+          description: "Set up or reconfigure the MCP proxy connection",
         }] });
         return;
 
       case "prompts/get": {
         const promptName = (parsed.params as { name?: string })?.name;
         if (promptName === "configure") {
+          const text = await this.handleConfigure();
           this.sendResult(id, {
-            messages: [{ role: "user", content: { type: "text", text: this.getConfigureText() } }],
+            messages: [{ role: "user", content: { type: "text", text } }],
           });
         } else {
           this.sendError(ErrorCode.INVALID_PARAMS, `Unknown prompt: ${promptName}`, id);
@@ -206,7 +205,8 @@ class ProxyServer {
       case "tools/call": {
         const toolName = (parsed.params as { name?: string })?.name;
         if (toolName === "configure") {
-          this.sendResult(id, { content: [{ type: "text", text: this.getConfigureText() }] });
+          const text = await this.handleConfigure();
+          this.sendResult(id, { content: [{ type: "text", text }] });
           return;
         }
         if (!this.config) {
@@ -326,7 +326,7 @@ class ProxyServer {
           id: `init-${name}`,
           method: "initialize",
           params: {
-            protocolVersion: "2024-11-05",
+            protocolVersion: MCP_PROTOCOL_VERSION,
             capabilities: {},
             clientInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
           },
@@ -370,10 +370,12 @@ class ProxyServer {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method }) + "\n");
   }
 
-  private getConfigureText(): string {
-    return this.config
-      ? `MCP Proxy is connected to ${this.config.tunnelUrl}.\nTo reconfigure, open: ${this.setupUrl}`
-      : `MCP Proxy is not configured yet.\nOpen this URL to pair:\n${this.setupUrl}`;
+  private async handleConfigure(): Promise<string> {
+    if (this.config) {
+      await this.startPairing();
+      this.sendNotification("notifications/tools/list_changed");
+    }
+    return `Open this URL in your browser to set up the MCP Proxy:\n\n${this.setupUrl}\n\nThe proxy will connect automatically once setup is complete.`;
   }
 
   private async startPairing(): Promise<void> {
