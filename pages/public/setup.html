@@ -213,6 +213,10 @@
             const sessionId = initResp.headers.get('Mcp-Session-Id');
             const sessionHeaders = sessionId ? { 'Mcp-Session-Id': sessionId } : undefined;
 
+            await hostFetch('POST', `/servers/${name}`, {
+              jsonrpc: '2.0', method: 'notifications/initialized', params: {}
+            }, sessionHeaders);
+
             const toolsResp = await hostFetch('POST', `/servers/${name}`, {
               jsonrpc: '2.0', id: `tools-${name}`, method: 'tools/list', params: {}
             }, sessionHeaders);

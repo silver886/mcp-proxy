@@ -153,33 +153,72 @@ class ProxyServer {
     }
 
     const id = parsed.id ?? null;
+
+    // Handle client notifications (no id)
     if (id === null) return;
 
-    if (!this.config) {
-      process.stdout.write(jsonRpcError(ErrorCode.PROXY_NOT_CONFIGURED, `Visit ${this.setupUrl}`, id) + "\n");
-      return;
-    }
-
     switch (parsed.method) {
+      // initialize always succeeds — proxy is a valid server even before pairing
       case "initialize":
         this.sendResult(id, {
           protocolVersion: "2024-11-05",
-          capabilities: { tools: {} },
+          capabilities: { tools: { listChanged: true }, prompts: {}, logging: {} },
           serverInfo: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
         });
         return;
 
+      // tools/list returns configure tool before pairing, real tools after
       case "tools/list":
+        if (!this.config) {
+          this.sendResult(id, { tools: [{
+            name: "configure",
+            description: "Get the setup URL to pair this MCP proxy with a host agent. Call this tool to see the pairing URL.",
+            inputSchema: { type: "object", properties: {} },
+          }] });
+          return;
+        }
         if (!this.initialized) await this.discoverServers();
         this.sendResult(id, { tools: this.getFilteredTools() });
         return;
 
-      case "tools/call":
-        await this.handleToolCall(id, parsed.params as { name: string; arguments?: Record<string, unknown> });
+      // prompts/list always available
+      case "prompts/list":
+        this.sendResult(id, { prompts: [{
+          name: "configure",
+          description: this.config
+            ? "Reconfigure the MCP proxy (change tunnel URL, auth token, or tool selection)"
+            : "Get the setup URL to pair this MCP proxy with a host agent",
+        }] });
         return;
 
+      case "prompts/get": {
+        const promptName = (parsed.params as { name?: string })?.name;
+        if (promptName === "configure") {
+          this.sendResult(id, {
+            messages: [{ role: "user", content: { type: "text", text: this.getConfigureText() } }],
+          });
+        } else {
+          this.sendError(ErrorCode.INVALID_PARAMS, `Unknown prompt: ${promptName}`, id);
+        }
+        return;
+      }
+
+      case "tools/call": {
+        const toolName = (parsed.params as { name?: string })?.name;
+        if (toolName === "configure") {
+          this.sendResult(id, { content: [{ type: "text", text: this.getConfigureText() }] });
+          return;
+        }
+        if (!this.config) {
+          this.sendError(ErrorCode.PROXY_NOT_CONFIGURED, `Visit ${this.setupUrl}`, id);
+          return;
+        }
+        await this.handleToolCall(id, parsed.params as { name: string; arguments?: Record<string, unknown> });
+        return;
+      }
+
       default:
-        process.stdout.write(jsonRpcError(-32601, `Method not found: ${parsed.method}`, id) + "\n");
+        this.sendError(ErrorCode.METHOD_NOT_FOUND, parsed.method, id);
     }
   }
 
@@ -188,7 +227,7 @@ class ProxyServer {
     const serverName = this.toolRoute.get(prefixedName);
 
     if (!serverName) {
-      process.stdout.write(jsonRpcError(-32602, `Unknown tool: ${prefixedName}`, id) + "\n");
+      this.sendError(ErrorCode.INVALID_PARAMS, `Unknown tool: ${prefixedName}`, id);
       return;
     }
 
@@ -213,7 +252,7 @@ class ProxyServer {
       const responseBody = await upstream.text();
       if (responseBody) process.stdout.write(responseBody + "\n");
     } catch (err) {
-      process.stdout.write(jsonRpcError(ErrorCode.HOST_UNREACHABLE, (err as Error).message, id) + "\n");
+      this.sendError(ErrorCode.HOST_UNREACHABLE, (err as Error).message, id);
     }
   }
 
@@ -323,6 +362,20 @@ class ProxyServer {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
   }
 
+  private sendError(code: number, detail: string | undefined, id: string | number | null): void {
+    process.stdout.write(jsonRpcError(code, detail, id) + "\n");
+  }
+
+  private sendNotification(method: string): void {
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method }) + "\n");
+  }
+
+  private getConfigureText(): string {
+    return this.config
+      ? `MCP Proxy is connected to ${this.config.tunnelUrl}.\nTo reconfigure, open: ${this.setupUrl}`
+      : `MCP Proxy is not configured yet.\nOpen this URL to pair:\n${this.setupUrl}`;
+  }
+
   private async startPairing(): Promise<void> {
     if (this.pollTimer) clearInterval(this.pollTimer);
     const previousConfig = this.config;
@@ -354,6 +407,7 @@ class ProxyServer {
   }
 
   private async pollConfig(): Promise<void> {
+    if (this.config) return; // Already paired — guard against overlapping async polls
     try {
       const { aesKey, codeId, authHash } = await this.ensureDerivedKeys();
       const result = await rpc(this.pagesUrl, codeId, authHash, "read");
@@ -369,6 +423,7 @@ class ProxyServer {
           this.pollTimer = null;
           process.stderr.write(`  Paired! tunnel=${data.tunnelUrl}\n`);
           await this.discoverServers();
+          this.sendNotification("notifications/tools/list_changed");
         }
       }
     } catch {

@@ -7,8 +7,10 @@ export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 6270;
 export const DEFAULT_PAGES_URL = "https://mcp-proxy.pages.dev";
 
-// JSON-RPC error codes (-32000 to -32099 = server-defined, -32603 = spec internal error)
+// JSON-RPC error codes: -32600..-32603 = spec-defined, -32000..-32099 = server-defined
 export const ErrorCode = {
+  METHOD_NOT_FOUND:     -32601, // JSON-RPC spec: method not found
+  INVALID_PARAMS:       -32602, // JSON-RPC spec: invalid params
   INTERNAL:             -32603, // JSON-RPC spec: internal error
   PROXY_NOT_CONFIGURED: -32001, // Proxy has not been paired yet
   HOST_UNREACHABLE:     -32002, // Cannot reach the host agent via tunnel
@@ -18,6 +20,8 @@ export const ErrorCode = {
 } as const;
 
 export const ErrorMessage = {
+  [ErrorCode.METHOD_NOT_FOUND]:     "Method not found",
+  [ErrorCode.INVALID_PARAMS]:       "Invalid params",
   [ErrorCode.INTERNAL]:             "Internal error",
   [ErrorCode.PROXY_NOT_CONFIGURED]: "Proxy not configured",
   [ErrorCode.HOST_UNREACHABLE]:     "Host agent unreachable",
