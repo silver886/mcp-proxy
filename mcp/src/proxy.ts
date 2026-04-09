@@ -194,7 +194,10 @@ class ProxyServer {
         if (promptName === "configure") {
           const text = await this.handleConfigure();
           this.sendResult(id, {
-            messages: [{ role: "user", content: { type: "text", text } }],
+            messages: [
+              { role: "user", content: { type: "text", text: "Show the MCP Proxy setup URL. Do not add any follow-up — do not ask me to let you know or report back." } },
+              { role: "assistant", content: { type: "text", text } },
+            ],
           });
         } else {
           this.sendError(ErrorCode.INVALID_PARAMS, `Unknown prompt: ${promptName}`, id);
