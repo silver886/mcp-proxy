@@ -71,13 +71,24 @@ Add the proxy as a stdio MCP server. The client launches it automatically.
 
 ### 3. Pair
 
-When the MCP client spawns the proxy, the proxy prints a setup URL to stderr:
+The proxy starts idle. Ask your MCP client to call the `configure` tool (or
+prompt) — the proxy then spins up an ephemeral pairing tunnel that serves
+both the setup page and the pairing API on the same origin, and prints a
+setup URL to stderr:
 
 ```
-Configure at: https://mcp-proxy.pages.dev/setup.html#code=...&key=...
+Configure at: https://abc-xyz.trycloudflare.com/#token=...
 ```
 
-Open the URL in a browser. Enter the tunnel URL and auth token from step 1, discover servers, and select tools. The proxy picks up the config automatically and starts forwarding MCP requests.
+Open the URL in a browser. Add one or more host agents — each row takes a
+host id (a slug you choose), tunnel URL, and auth token — discover servers,
+and select tools. The proxy applies the config and tears down the pairing
+tunnel automatically.
+
+A single proxy can fan out to multiple hosts at once. Tools are namespaced
+as `<hostId>__<serverName>__<toolName>` so the same server name can appear
+on more than one host without collision. (The host agent itself stays
+single-proxy, in line with MCP's one-server-one-client model.)
 
 ## Architecture
 
@@ -85,20 +96,35 @@ Open the URL in a browser. Enter the tunnel URL and auth token from step 1, disc
 
 | Component | Role | Runs on |
 |-----------|------|---------|
-| **Host Agent** (`host`) | HTTP-to-stdio bridge. Spawns MCP servers, manages sessions, serves MCP Streamable HTTP. | Machine with resources |
-| **Proxy Server** (`proxy`) | Stdio MCP server that forwards requests to the host agent via tunnel. | Machine with MCP client |
-| **Config Page** (Cloudflare Pages) | Device-code pairing. Stores encrypted config in KV with 15-min TTL. | Cloudflare edge |
+| **Host Agent** (`host`) | HTTP-to-stdio bridge. Spawns MCP servers, manages sessions, serves MCP Streamable HTTP over a long-lived Cloudflare tunnel. | Machine with resources |
+| **Proxy Server** (`proxy`) | Stdio MCP server. Idle at startup; on `configure` it spins up an ephemeral pairing tunnel via the bundled wrapper, serves the setup page on that same tunnel, accepts the pairing handshake, then talks to the host's tunnel for ongoing MCP traffic. | Machine with MCP client |
 
-### Pairing flow
+### Pairing flow (lazy-start, single-origin)
 
 ```
-1. MCP client spawns the proxy (stdio)
-2. Proxy generates pairing code + encryption key, polls Pages RPC
-3. User opens setup URL in browser (code + key in URL hash, never sent to server)
-4. User enters tunnel URL + auth token, discovers servers, selects tools
-5. Setup page encrypts config client-side, stores ciphertext in KV via RPC
-6. Proxy polls, decrypts config, discovers servers, starts forwarding
+1. MCP client spawns the proxy (stdio). Proxy is idle — no tunnel, no polling.
+2. Agent calls the `configure` tool. Proxy spawns a Node wrapper that owns
+   a `cloudflared` quick tunnel pointing at a local pairing HTTP server.
+   That HTTP server serves both the setup page (GET /) and the pairing API
+   (POST /pair/forward, POST /pair/complete) on the same origin.
+3. Wrapper prints the tunnel URL. Proxy mints a bearer token and emits a
+   setup URL — `<tunnel>/#token=<token>`. Token rides in the URL fragment
+   so it never appears in server access logs or Referer headers.
+4. User opens the setup URL. The page is served by the proxy itself, so
+   browser fetches to the pairing API are same-origin — no CORS dance.
+   Pairing endpoints are gated by the bearer token.
+5. Through the pairing API, the page discovers servers and tools on each
+   configured host's MCP tunnel, then submits the final configuration
+   (a list of hosts plus the selected tools).
+6. Proxy applies the config, signals the wrapper to tear down `cloudflared`,
+   and shuts the pairing HTTP server. From here on the proxy talks only to
+   the host's long-lived MCP tunnel — no public infrastructure, no polling.
 ```
+
+The wrapper guarantees `cloudflared` cannot outlive the proxy. When the
+proxy exits (or the wrapper sees stdin EOF), the wrapper kills the
+`cloudflared` child immediately. Detection latency is 0ms on
+Linux, macOS, and Windows.
 
 ### Protocol
 
@@ -151,12 +177,31 @@ host [options]
 **Proxy server:**
 
 ```
-proxy [options]
-
---pages-url <url>   Config page URL (default: https://mcp-proxy.pages.dev)
+proxy
 ```
 
-Also reads `MCP_PROXY_PAGES_URL` environment variable.
+The proxy takes no flags. The setup page is bundled with the npm package
+and served by the proxy itself on the ephemeral pairing tunnel — there's
+no external infrastructure to point at and no env vars to configure.
+
+The pairing handshake runs entirely between the browser and the proxy's
+ephemeral pairing tunnel, gated by a bearer token from the URL fragment.
+
+Server names exposed by the host agent — and host ids you assign during
+pairing — must match `[A-Za-z0-9._-]+` so they stay safe inside URLs and
+the proxy's tool-name routing. Names that violate the policy are rejected
+at host startup or pairing time.
+
+### Server-initiated requests
+
+The proxy fully bridges server→client requests (sampling, elicitation,
+roots/list, ping, …). When an upstream MCP server sends a request over its
+SSE notification channel, the proxy remaps the request id, forwards it to
+the MCP client, and routes the client's response back to the originating
+host session with the original id restored. The real client's
+`capabilities` are forwarded to each upstream server during initialize so
+servers see the actual feature support rather than an empty capabilities
+object.
 
 ## Error codes
 

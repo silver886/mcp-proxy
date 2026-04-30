@@ -4,11 +4,8 @@
 /*.config.*
 /.eslintrc.*
 /tsconfig.json
+/pnpm-lock.yaml
 /script
 /src
 /test
-/lib/src
-/lib/test
-/dist
 /jest-reports
-/pages

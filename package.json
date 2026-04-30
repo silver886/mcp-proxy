@@ -26,18 +26,31 @@
   },
   "homepage": "https://github.com/silver886/mcp-proxy#readme",
   "bin": {
-    "host": "mcp/dist/host.js",
-    "proxy": "mcp/dist/proxy.js"
+    "host": "dist/host.js",
+    "proxy": "dist/proxy.js"
   },
   "files": [
-    "mcp/dist"
+    "dist",
+    "static"
   ],
+  "engines": {
+    "node": ">=20.3.0"
+  },
   "scripts": {
-    "build": "pnpm --filter @silver886/mcp-proxy-mcp build",
-    "prepublishOnly": "pnpm run build",
-    "deploy:pages": "pnpm --filter @silver886/mcp-proxy-pages run deploy"
+    "build": "tsc",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "cloudflared": "^0.7.1"
+    "cloudflared": "^0.7.1",
+    "eventsource-parser": "^3.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "cloudflared"
+    ]
   }
 }

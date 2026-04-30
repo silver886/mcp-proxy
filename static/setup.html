@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>MCP Proxy – Setup</title>
+      <link rel="stylesheet" href="/style.css" />
+      <link rel="stylesheet" href="/setup.css" />
+   </head>
+   <body>
+      <div class="card">
+         <h1>MCP Proxy Setup</h1>
+
+         <div id="step1" class="step active">
+            <p class="desc">
+               Add one or more host agents. Each host has its own tunnel URL and
+               auth token. Tools will be namespaced by host id when exposed to
+               the MCP client.
+            </p>
+            <form id="tunnel-form">
+               <div id="hosts-container"></div>
+               <button type="button" id="add-host-btn">
+                  + Add another host
+               </button>
+               <button type="submit" id="tunnel-btn">Discover Servers</button>
+            </form>
+         </div>
+
+         <div id="step2" class="step">
+            <p class="desc">
+               Select the servers and tools to expose through the proxy.
+               Unchecking a server hides every capability it offers — tools,
+               prompts, and resources alike.
+            </p>
+            <div id="servers-container"></div>
+            <p id="save-hint" class="hint">
+               Select at least one server to continue.
+            </p>
+            <div class="step2-actions">
+               <button type="button" id="back-btn">← Back</button>
+               <button id="save-btn" disabled>Complete Setup</button>
+            </div>
+         </div>
+
+         <div id="result-section" style="display: none"></div>
+
+         <div id="error-section" style="display: none">
+            <div class="banner error">
+               Invalid setup link. The URL must contain the proxy's bearer token
+               in the hash fragment (e.g. <code>/#token=...</code>).
+            </div>
+         </div>
+      </div>
+
+      <script src="/setup.js"></script>
+   </body>
+</html>

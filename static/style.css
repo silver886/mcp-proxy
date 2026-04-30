@@ -1,0 +1,208 @@
+* {
+   box-sizing: border-box;
+   margin: 0;
+   padding: 0;
+}
+
+body {
+   font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+   background: #0f172a;
+   color: #e2e8f0;
+   min-height: 100vh;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+}
+
+.card {
+   background: #1e293b;
+   border-radius: 12px;
+   padding: 2rem;
+   max-width: 480px;
+   width: 100%;
+   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Tablet / small desktop: wider card, more breathing room. */
+@media (min-width: 768px) {
+   .card {
+      max-width: 720px;
+      padding: 2rem 2.5rem;
+   }
+}
+
+/* Desktop and up: stepped breakpoints so workstation-class displays
+   (1080p, 1440p, 4K) actually use their horizontal room instead of leaving
+   the host/server grids capped at 960px with a sea of empty space. The
+   inner grids are auto-fit, so growing the card naturally lets more host
+   rows / server groups sit side-by-side without per-grid changes. The
+   .desc paragraph has its own 65ch cap so prose stays readable even when
+   the card is very wide. */
+@media (min-width: 1280px) {
+   .card {
+      max-width: 1100px;
+   }
+}
+
+@media (min-width: 1600px) {
+   .card {
+      max-width: 1400px;
+      padding: 2.25rem 3rem;
+   }
+}
+
+/* 1080p workstation territory. */
+@media (min-width: 1920px) {
+   .card {
+      max-width: 1700px;
+   }
+}
+
+/* 1440p / entry-level 4K — let the card stretch but cap so the grids
+   don't end up so wide that one server group spans 600px+ of dead space. */
+@media (min-width: 2560px) {
+   .card {
+      max-width: 2100px;
+      padding: 2.5rem 3.5rem;
+   }
+}
+
+/* True 4K (3840px+). Cap here — going wider just hurts scan distance more
+   than it adds layout value. */
+@media (min-width: 3200px) {
+   .card {
+      max-width: 2600px;
+   }
+}
+
+h1 {
+   font-size: 1.25rem;
+   margin-bottom: 0.25rem;
+}
+
+.desc {
+   color: #94a3b8;
+   font-size: 0.875rem;
+   margin: 1rem 0;
+   max-width: 65ch;
+}
+
+label {
+   display: block;
+   font-size: 0.875rem;
+   font-weight: 500;
+   margin-bottom: 0.375rem;
+   margin-top: 1rem;
+}
+
+input,
+select {
+   width: 100%;
+   padding: 0.625rem 0.75rem;
+   border-radius: 8px;
+   border: 1px solid #334155;
+   background: #0f172a;
+   color: #e2e8f0;
+   font-size: 0.9rem;
+}
+
+input:focus,
+select:focus {
+   outline: none;
+   border-color: #38bdf8;
+   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+/* Live "fail early" validation. Two selectors layered:
+     - :not(:placeholder-shown):invalid — fires the moment the user types
+       something that violates a constraint (pattern / type=url /
+       setCustomValidity). It skips the empty case because :placeholder-shown
+       matches when the field is empty (every input here defines a
+       placeholder), so we don't paint a freshly-rendered required field red
+       before the user has even touched it.
+     - :user-invalid — covers the post-submit case where the user pressed
+       Discover with required fields still empty. :placeholder-shown wouldn't
+       have filtered those, so we still want them flagged at that point.
+   setCustomValidity (the duplicate-id cross-field check) plugs into the
+   same :invalid machinery, so styling is uniform across native and custom
+   failures. */
+input:not(:placeholder-shown):invalid,
+input:user-invalid {
+   border-color: #ef4444;
+   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+button {
+   margin-top: 1.5rem;
+   width: 100%;
+   padding: 0.75rem;
+   border: none;
+   border-radius: 8px;
+   background: #2563eb;
+   color: white;
+   font-size: 0.95rem;
+   font-weight: 600;
+   cursor: pointer;
+   transition: background 0.15s;
+}
+
+button:hover {
+   background: #1d4ed8;
+}
+
+button:disabled {
+   opacity: 0.5;
+   cursor: not-allowed;
+}
+
+.hint {
+   font-size: 0.75rem;
+   color: #64748b;
+   margin-top: 0.25rem;
+}
+
+.banner {
+   border-radius: 8px;
+   padding: 1rem;
+   margin-top: 1rem;
+   text-align: center;
+}
+
+.banner.ok {
+   background: #065f46;
+   border: 1px solid #10b981;
+   color: #d1fae5;
+}
+
+.banner.error {
+   background: #7f1d1d;
+   border: 1px solid #ef4444;
+   color: #fecaca;
+}
+
+.banner.warning {
+   background: #78350f;
+   border: 1px solid #f59e0b;
+   color: #fde68a;
+}
+
+.spinner {
+   display: inline-block;
+   width: 16px;
+   height: 16px;
+   border: 2px solid rgba(255, 255, 255, 0.3);
+   border-top-color: white;
+   border-radius: 50%;
+   animation: spin 0.6s linear infinite;
+   vertical-align: middle;
+   margin-right: 0.5rem;
+}
+
+@keyframes spin {
+   to {
+      transform: rotate(360deg);
+   }
+}
