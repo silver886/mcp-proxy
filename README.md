@@ -213,11 +213,3 @@ object.
 | `-32003` | `PROCESS_EXITED` | MCP server child process died |
 | `-32004` | `PROCESS_NOT_RUNNING` | Child process isn't running |
 | `-32005` | `REQUEST_TIMEOUT` | MCP server didn't respond in time |
-
-## Development
-
-```bash
-pnpm install
-pnpm run build
-pnpm publish --access public --no-git-checks
-```
