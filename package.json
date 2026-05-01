@@ -39,9 +39,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "prepack": "node scripts/lockdeps.mjs",
-    "postpack": "node scripts/lockdeps.mjs remove",
-    "prepublishOnly": "pnpm run build"
+    "prepack": "tsc && node scripts/lockdeps.mjs",
+    "postpack": "node scripts/lockdeps.mjs remove"
   },
   "dependencies": {
     "cloudflared": "^0.7.1",
