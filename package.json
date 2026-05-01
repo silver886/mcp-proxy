@@ -1,6 +1,6 @@
 {
   "name": "@silver886/mcp-proxy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP proxy bridge: forward MCP requests across network boundaries via Cloudflare tunnel",
   "repository": {
     "type": "git",
