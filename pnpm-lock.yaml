@@ -18,6 +18,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      js-yaml:
+        specifier: ^4.1.0
+        version: 4.1.1
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -27,6 +30,9 @@ packages:
   '@types/node@20.19.39':
     resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
 
+  argparse@2.0.1:
+    resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
+
   cloudflared@0.7.1:
     resolution: {integrity: sha512-jJn1Gu9Tf4qnIu8tfiHZ25Hs8rNcRYSVf8zAd97wvYdOCzftm1CTs1S/RPhijjGi8gUT1p9yzfDi9zYlU/0RwA==}
     hasBin: true
@@ -34,6 +40,10 @@ packages:
   eventsource-parser@3.0.8:
     resolution: {integrity: sha512-70QWGkr4snxr0OXLRWsFLeRBIRPuQOvt4s8QYjmUlmlkyTZkRqS7EDVRZtzU3TiyDbXSzaOeF0XUKy8PchzukQ==}
     engines: {node: '>=18.0.0'}
+
+  js-yaml@4.1.1:
+    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
+    hasBin: true
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -49,9 +59,15 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  argparse@2.0.1: {}
+
   cloudflared@0.7.1: {}
 
   eventsource-parser@3.0.8: {}
+
+  js-yaml@4.1.1:
+    dependencies:
+      argparse: 2.0.1
 
   typescript@5.9.3: {}
 

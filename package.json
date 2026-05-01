@@ -31,6 +31,7 @@
   },
   "files": [
     "dist",
+    "scripts/fetch.mjs",
     "static"
   ],
   "engines": {
@@ -38,6 +39,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepack": "node scripts/lockdeps.mjs",
+    "postpack": "node scripts/lockdeps.mjs remove",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
@@ -46,7 +49,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "js-yaml": "^4.1.0",
     "typescript": "^5.5.0"
-  },
-  "bundleDependencies": true
+  }
 }
