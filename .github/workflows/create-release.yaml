@@ -20,5 +20,3 @@ jobs:
       packages: write
       id-token: write
     uses: silver886/github-actions/.github/workflows/release-npm.yaml@master
-    with:
-      test: false
