@@ -146,6 +146,12 @@ export class SseReader {
       return;
     }
 
+    // Symmetric with server.ts: an upstream "request" with id:null can't
+    // be answered (the bridge keys responses by id), so drop rather than
+    // forwarding it to the agent as if it were a notification — that
+    // would silently re-cast a request the upstream expects a response to.
+    if (hasMethod && msg.id === null) return;
+
     if (!hasMethod) return; // stray response — not expected on this stream
 
     // Notifications: list_changed events trigger a cache refresh BEFORE

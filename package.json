@@ -39,6 +39,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "tsc --noEmit",
     "prepack": "tsc && node scripts/lockdeps.mjs",
     "postpack": "node scripts/lockdeps.mjs remove"
   },

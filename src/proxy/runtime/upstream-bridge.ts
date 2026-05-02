@@ -1,5 +1,5 @@
 import { ErrorCode } from "../../shared/protocol.js";
-import { TOOL_FORWARD_TIMEOUT_MS, UPSTREAM_REQUEST_TIMEOUT_MS } from "../core/constants.js";
+import { SESSION_DELETE_TIMEOUT_MS, TOOL_FORWARD_TIMEOUT_MS, UPSTREAM_REQUEST_TIMEOUT_MS } from "../core/constants.js";
 import { timeoutSignal } from "../core/fetch-timeout.js";
 import type { HostConfig, HostState } from "../core/types.js";
 
@@ -121,11 +121,17 @@ export class UpstreamBridge {
     await Promise.allSettled(pending.map((ctx) => {
       const host = hosts.get(ctx.hostId);
       if (!host) return;
+      // Teardown courtesy — share the DELETE budget, not the 5-min tool
+      // budget. A blackholed host would otherwise stall closeAllSessions
+      // (re-pair, rollback, SIGTERM shutdown) until TOOL_FORWARD_TIMEOUT_MS.
+      // The DELETE that follows reaps the session anyway; if this courtesy
+      // doesn't land quickly the upstream's own UPSTREAM_REQUEST_TIMEOUT_MS
+      // catches the orphaned child.
       return this.postResponse(host, ctx.serverName, ctx.sessionId, {
         jsonrpc: "2.0",
         id: ctx.originalId,
         error: { code: ErrorCode.INTERNAL, message: "proxy reconfigured before client responded" },
-      });
+      }, SESSION_DELETE_TIMEOUT_MS);
     }));
   }
 
@@ -134,6 +140,7 @@ export class UpstreamBridge {
     serverName: string,
     sessionId: string,
     body: Record<string, unknown>,
+    timeoutMs: number = TOOL_FORWARD_TIMEOUT_MS,
   ): Promise<void> {
     const target = `${host.config.tunnelUrl}/servers/${serverName}`;
     const headers = { ...this.hostHeaders(host.config), "Mcp-Session-Id": sessionId };
@@ -141,7 +148,7 @@ export class UpstreamBridge {
       const resp = await fetch(target, {
         method: "POST",
         headers,
-        signal: timeoutSignal(TOOL_FORWARD_TIMEOUT_MS),
+        signal: timeoutSignal(timeoutMs),
         body: JSON.stringify(body),
       });
       this.captureSessionId(host, serverName, resp.headers.get("mcp-session-id"));

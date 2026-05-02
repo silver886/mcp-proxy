@@ -136,6 +136,17 @@ export class ProxyServer {
       return;
     }
 
+    // JSON-RPC 2.0 discourages id:null in requests because the spec
+    // reserves null for "id couldn't be parsed" in error responses
+    // (we use it ourselves at the PARSE_ERROR / missing-method paths).
+    // Falling through to the notification branch here would silently
+    // drop a request the agent expects an answer to; reject explicitly
+    // so the agent sees a real error instead of hanging.
+    if (parsed.id === null) {
+      process.stdout.write(jsonRpcError(ErrorCode.INVALID_REQUEST, "id must not be null in a request", null) + "\n");
+      return;
+    }
+
     if (!hasId) {
       await this.handlers.handleClientNotification(parsed.method!, parsed.params ?? {});
       return;
@@ -181,7 +192,7 @@ export class ProxyServer {
         return this.handlers.handleCompletion(id, (parsed.params ?? {}) as { ref?: { type?: string; name?: string; uri?: string }; argument?: unknown });
 
       case "tools/call":
-        return this.handlers.handleToolDispatch(id, parsed.params as { name: string; arguments?: Record<string, unknown>; _meta?: unknown });
+        return this.handlers.handleToolDispatch(id, parsed.params as { name?: string; arguments?: Record<string, unknown>; _meta?: unknown } | undefined);
 
       default:
         process.stdout.write(jsonRpcError(ErrorCode.METHOD_NOT_FOUND, parsed.method, id) + "\n");

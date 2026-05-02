@@ -42,6 +42,14 @@ export class Forwarder {
     };
     const body = JSON.stringify({ jsonrpc: "2.0", id, method, params: upstreamParams });
 
+    // Snapshot the active pairing so a re-pair landing while this fetch is
+    // in flight can be detected before we write a stale response back to the
+    // agent. closeAllSessions clears state.inflight, but our local closure
+    // still holds the id/route, so without this guard the OLD pairing's
+    // response (or its upstream-level error) would be emitted on stdout
+    // against a pairing that no longer exists.
+    const startGeneration = this.state.configGeneration;
+
     this.state.inflight.set(id, route);
     const progressToken = ((upstreamParams as { _meta?: { progressToken?: string | number } } | null)?._meta?.progressToken);
     if (progressToken !== undefined) this.state.progressTokens.set(progressToken, route);
@@ -85,6 +93,15 @@ export class Forwarder {
         });
         this.runner.captureSessionId(host, route.serverName, refreshed, upstream.headers.get("mcp-session-id"));
         responseBody = await upstream.text();
+      }
+
+      // Pairing changed underneath us between dispatch and response. Reply
+      // with a generic error so the request doesn't hang — the agent can
+      // retry against the new pairing — but don't write the stale body or
+      // its upstream-level error, since neither applies to the new config.
+      if (this.state.configGeneration !== startGeneration) {
+        this.sendError(ErrorCode.INTERNAL, "request superseded by reconfiguration", id);
+        return;
       }
 
       if (!upstream.ok) {
@@ -143,6 +160,13 @@ export class Forwarder {
       parsed.id = id;
       this.writeOut(JSON.stringify(parsed));
     } catch (err) {
+      // Same supersession guard as the success path: if the abort/error
+      // raced a re-pair, the agent should see "superseded" rather than the
+      // raw transport error from a pairing that no longer exists.
+      if (this.state.configGeneration !== startGeneration) {
+        this.sendError(ErrorCode.INTERNAL, "request superseded by reconfiguration", id);
+        return;
+      }
       this.sendError(ErrorCode.HOST_UNREACHABLE, (err as Error).message, id);
     } finally {
       this.state.inflight.delete(id);

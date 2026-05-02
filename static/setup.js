@@ -92,22 +92,37 @@
          const row = document.createElement('div');
          row.className = 'host-row';
          row.dataset.uid = host.uid;
-         row.innerHTML = `
-            <div class="host-head">
-               <div class="host-id" data-role="title">Host ${esc(host.id || '(unnamed)')}</div>
-               <button type="button" class="host-remove" data-action="remove">Remove</button>
-            </div>
-            <label for="id">Host ID</label>
-            <input id="id" type="text" data-field="id" value="${esc(host.id)}" placeholder="dev-laptop" required pattern="(?!.*__)[A-Za-z0-9._\\-]+" title="Letters, digits, '.', '_', '-'. Must not contain '__' and must be unique across hosts." />
 
-            <label for="tunnelUrl">Tunnel URL</label>
-            <input id="tunnelUrl" type="url" data-field="tunnelUrl" value="${esc(host.tunnelUrl)}" placeholder="https://abc-xyz.trycloudflare.com" required />
+         const head = document.createElement('div');
+         head.className = 'host-head';
+         const title = document.createElement('div');
+         title.className = 'host-id';
+         title.dataset.role = 'title';
+         title.textContent = `Host ${host.id || '(unnamed)'}`;
+         head.appendChild(title);
+         const removeBtn = document.createElement('button');
+         removeBtn.type = 'button';
+         removeBtn.className = 'host-remove';
+         removeBtn.dataset.action = 'remove';
+         removeBtn.textContent = 'Remove';
+         head.appendChild(removeBtn);
+         row.appendChild(head);
 
-            <label for="authToken">Auth Token</label>
-            <input id="authToken" type="text" data-field="authToken" value="${esc(host.authToken)}" placeholder="Paste token from host agent" required />
+         appendHostField(row, host.uid, 'id', 'text', host.id, 'Host ID', 'dev-laptop', {
+            pattern: '(?!.*__)[A-Za-z0-9._\\-]+',
+            title: "Letters, digits, '.', '_', '-'. Must not contain '__' and must be unique across hosts.",
+         });
+         appendHostField(row, host.uid, 'tunnelUrl', 'url', host.tunnelUrl, 'Tunnel URL', 'https://abc-xyz.trycloudflare.com');
+         appendHostField(row, host.uid, 'authToken', 'text', host.authToken, 'Auth Token', 'Paste token from host agent');
 
-            <div class="host-status ${host.status.startsWith('Error') ? 'error' : host.status.startsWith('Partial') ? 'partial' : host.status ? 'ok' : ''}">${esc(host.status)}</div>
-         `;
+         const status = document.createElement('div');
+         const statusClass = host.status.startsWith('Error') ? 'error'
+            : host.status.startsWith('Partial') ? 'partial'
+            : host.status ? 'ok' : '';
+         status.className = statusClass ? `host-status ${statusClass}` : 'host-status';
+         status.textContent = host.status;
+         row.appendChild(status);
+
          container.appendChild(row);
       }
       // Hide remove button when there's only one row.
@@ -117,6 +132,28 @@
       // can resolve a duplicate flag on another; re-sweep so the UI is in
       // sync with the current id values.
       validateHostIdUniqueness();
+   }
+
+   // Build a label + input pair via DOM properties so user-supplied values
+   // can't escape attribute context. Template-literal interpolation with
+   // esc() escapes <, >, & only — quotes and apostrophes pass through and
+   // would let an upstream-supplied token break out of value="…".
+   function appendHostField(row, uid, field, type, value, labelText, placeholder, extras) {
+      const id = `${field}-${uid}`;
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = labelText;
+      row.appendChild(label);
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = type;
+      input.dataset.field = field;
+      input.value = value;
+      input.placeholder = placeholder;
+      input.required = true;
+      if (extras?.pattern) input.pattern = extras.pattern;
+      if (extras?.title) input.title = extras.title;
+      row.appendChild(input);
    }
 
    document.getElementById('hosts-container').addEventListener('input', (e) => {
@@ -583,15 +620,39 @@
          const checked = honorPriors && priorSelections.selectedTools
             ? priorSelections.selectedTools.has(toolKey)
             : true;
-         item.innerHTML = `
-            <div class="tool-check">
-               <input type="checkbox" id="${esc(cbId)}" data-role="tool" data-host="${esc(hostId)}" data-server="${esc(serverName)}" data-tool="${esc(tool.name)}"${checked ? ' checked' : ''}>
-            </div>
-            <label class="tool-label" for="${esc(cbId)}">
-               <span class="tool-name">${esc(tool.name)}</span>
-               ${tool.description ? `<span class="tool-desc">${esc(tool.description)}</span>` : ''}
-            </label>
-         `;
+
+         // Build via DOM properties so tool.name (sourced from an upstream
+         // MCP server, untrusted) can't escape attribute context. esc() only
+         // covers text-node escaping; a quote in tool.name would break out
+         // of data-tool="…" / id="…" / for="…" if interpolated as HTML.
+         const checkWrap = document.createElement('div');
+         checkWrap.className = 'tool-check';
+         const cb = document.createElement('input');
+         cb.type = 'checkbox';
+         cb.id = cbId;
+         cb.dataset.role = 'tool';
+         cb.dataset.host = hostId;
+         cb.dataset.server = serverName;
+         cb.dataset.tool = tool.name;
+         cb.checked = checked;
+         checkWrap.appendChild(cb);
+         item.appendChild(checkWrap);
+
+         const label = document.createElement('label');
+         label.className = 'tool-label';
+         label.htmlFor = cbId;
+         const nameSpan = document.createElement('span');
+         nameSpan.className = 'tool-name';
+         nameSpan.textContent = tool.name;
+         label.appendChild(nameSpan);
+         if (tool.description) {
+            const descSpan = document.createElement('span');
+            descSpan.className = 'tool-desc';
+            descSpan.textContent = tool.description;
+            label.appendChild(descSpan);
+         }
+         item.appendChild(label);
+
          list.appendChild(item);
       }
       wrapper.appendChild(list);

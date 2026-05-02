@@ -37,6 +37,14 @@ export class PairingController {
     expiryTimer: ReturnType<typeof setTimeout>;
   } | null = null;
 
+  // Single-flight gate for handleConfigure. Without it, two `configure`
+  // calls landing in the same event-loop window both observe `this.pairing`
+  // as null, both spawn an HTTP server + cloudflared subprocess, and the
+  // second's assignment to `this.pairing` orphans the first. The orphan's
+  // expiryTimer would then later call teardownPairing() and tear down the
+  // wrong (active) pairing, killing a working setup mid-session.
+  private configureInflight: Promise<string> | null = null;
+
   constructor(
     private readonly state: ProxyState,
     private readonly runner: DiscoveryRunner,
@@ -45,7 +53,15 @@ export class PairingController {
     private readonly sendNotification: (method: string) => void,
   ) {}
 
-  async handleConfigure(): Promise<string> {
+  handleConfigure(): Promise<string> {
+    if (this.configureInflight) return this.configureInflight;
+    this.configureInflight = this.doConfigure().finally(() => {
+      this.configureInflight = null;
+    });
+    return this.configureInflight;
+  }
+
+  private async doConfigure(): Promise<string> {
     this.teardownPairing();
 
     const bearer = randomBytes(32).toString("base64url");
@@ -284,6 +300,22 @@ export class PairingController {
       }
     }
 
+    // selectedTools entries are validated structurally by validatePairingConfig,
+    // but their existence on the wire can only be checked after discovery has
+    // populated state.toolRoute. The browser path can't produce stale entries
+    // (the UI builds selectedTools from the just-discovered set), but a direct
+    // caller of /pair/complete can — and getFilteredTools silently drops any
+    // entry whose key isn't in toolRoute, leaving the proxy paired-but-empty
+    // for tools with no error surfaced. Treat stale entries the same as
+    // missing servers: roll back to the previous pairing (or refuse, on
+    // first-time pair) so the operator gets a real failure signal instead of
+    // a cheerful ok on a config that won't expose any tools.
+    if (cfg.selectedTools) {
+      for (const key of cfg.selectedTools) {
+        if (!this.state.toolRoute.has(key)) missing.push(key);
+      }
+    }
+
     if (missing.length > 0) {
       // Cap the detail string so a wildly broken submit doesn't produce a
       // multi-kilobyte error body; the operator only needs a few names to
@@ -296,6 +328,12 @@ export class PairingController {
         this.log(`  New pairing missing servers (${detail}); restoring previous pairing`);
         this.state.installConfig(previousConfig, previousHosts);
         await this.runner.discoverServers();
+        // installConfig replaced toolRoute / promptRoute / resources between
+        // the success-path notify (only fires when missing.length === 0) and
+        // here, so an agent that polled tools/list during the new pairing's
+        // discovery may be holding a partial snapshot that no longer matches
+        // the restored routes. Notify list_changed so it re-fetches.
+        this.notifyAllListsChanged();
         return {
           ok: false,
           error: `Discovery did not complete for: ${detail}. The previous pairing has been restored — verify host reachability and retry.`,
@@ -306,6 +344,10 @@ export class PairingController {
       // so the next configure call starts fresh).
       this.log(`  New pairing missing servers (${detail}) and no prior config to restore; reverting to unconfigured`);
       this.state.config = null;
+      // Same notify rationale as the rollback branch above: a polling agent
+      // may have grabbed partial-new routes during discovery; tell it to
+      // re-fetch and find an empty unconfigured set.
+      this.notifyAllListsChanged();
       return {
         ok: false,
         error: `Discovery did not complete for: ${detail}. Verify host reachability and retry.`,
@@ -318,9 +360,7 @@ export class PairingController {
     // Discovery already populated the aggregated lists. Notify the agent
     // so it re-fetches tools/prompts/resources instead of trusting any
     // cached empty lists from before pairing.
-    this.sendNotification("notifications/tools/list_changed");
-    this.sendNotification("notifications/prompts/list_changed");
-    this.sendNotification("notifications/resources/list_changed");
+    this.notifyAllListsChanged();
 
     // Defer pairing teardown until /pair/complete's response body has
     // actually drained to the client — a fixed timer races slow clients
@@ -329,7 +369,21 @@ export class PairingController {
     return { ok: true, afterFlush: () => this.teardownPairing() };
   }
 
+  private notifyAllListsChanged(): void {
+    this.sendNotification("notifications/tools/list_changed");
+    this.sendNotification("notifications/prompts/list_changed");
+    this.sendNotification("notifications/resources/list_changed");
+  }
+
   async closeAllSessions(): Promise<void> {
+    // Bump the supersession token before any await so an in-flight forwarder
+    // request that resolves during teardown sees a stale generation and
+    // refuses to write its response. Without this, a fetch completing during
+    // bridge.clear / DELETE awaits emits onto stdout against a pairing that
+    // no longer exists. installConfig() bumps again on the way in; the
+    // double-bump is harmless because the token is only used for equality
+    // comparison.
+    this.state.configGeneration++;
     // Tear down SSE listeners first so loops don't reconnect after DELETE.
     for (const host of this.state.hosts.values()) {
       for (const ctrl of host.sseControllers.values()) ctrl.abort();

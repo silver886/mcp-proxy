@@ -195,6 +195,55 @@ export interface ServerConfig {
   shell?: boolean; // default false — set true for commands needing shell resolution
 }
 
+// Validates a raw ServerConfig from JSON and returns the canonical form
+// with documented defaults installed (args=[]). Every consumer of
+// ServerConfig — McpSession's spawn, the log line, future tooling — can
+// then trust the interface contract instead of re-checking shapes
+// defensively at every use site. All shape reasons are collected so a
+// misconfigured file surfaces a complete diff to fix in one error
+// message rather than one-issue-per-restart.
+export function normalizeServerConfig(
+  raw: unknown,
+):
+  | { ok: true; config: ServerConfig }
+  | { ok: false; reasons: string[] }
+{
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, reasons: ["must be an object with at least { command }"] };
+  }
+  const r = raw as Record<string, unknown>;
+  const reasons: string[] = [];
+  if (typeof r.command !== "string" || r.command.length === 0) {
+    reasons.push("command must be a non-empty string");
+  }
+  if (
+    r.args !== undefined
+    && !(Array.isArray(r.args) && r.args.every((a) => typeof a === "string"))
+  ) {
+    reasons.push("args must be an array of strings (default: [])");
+  }
+  if (r.env !== undefined) {
+    const envOk = typeof r.env === "object"
+      && r.env !== null
+      && !Array.isArray(r.env)
+      && Object.values(r.env as Record<string, unknown>).every((v) => typeof v === "string");
+    if (!envOk) reasons.push("env must be a map of string to string (default: {})");
+  }
+  if (r.shell !== undefined && typeof r.shell !== "boolean") {
+    reasons.push("shell must be boolean (default: false)");
+  }
+  if (reasons.length > 0) return { ok: false, reasons };
+  return {
+    ok: true,
+    config: {
+      command: r.command as string,
+      args: (r.args as string[] | undefined) ?? [],
+      env: r.env as Record<string, string> | undefined,
+      shell: r.shell as boolean | undefined,
+    },
+  };
+}
+
 export interface HostAgentConfig {
   servers: Record<string, ServerConfig>;
   host?: string; // default DEFAULT_HOST

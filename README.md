@@ -106,7 +106,8 @@ single-proxy, in line with MCP's one-server-one-client model.)
 2. Agent calls the `configure` tool. Proxy spawns a Node wrapper that owns
    a `cloudflared` quick tunnel pointing at a local pairing HTTP server.
    That HTTP server serves both the setup page (GET /) and the pairing API
-   (POST /pair/forward, POST /pair/complete) on the same origin.
+   (POST /pair/list-servers, POST /pair/discover, POST /pair/complete) on
+   the same origin.
 3. Wrapper prints the tunnel URL. Proxy mints a bearer token and emits a
    setup URL — `<tunnel>/#token=<token>`. Token rides in the URL fragment
    so it never appears in server access logs or Referer headers.

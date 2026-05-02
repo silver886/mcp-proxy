@@ -3,13 +3,18 @@ import { DISCOVERY_FETCH_TIMEOUT_MS, SESSION_DELETE_TIMEOUT_MS } from "../core/c
 import { timeoutSignal } from "../core/fetch-timeout.js";
 import type { Prompt, Resource, ResourceTemplate, Tool } from "../core/types.js";
 
-// Discovery helpers. Capability list calls (prompts/resources/templates)
+// Discovery helpers. List calls (tools/prompts/resources/templates)
 // distinguish METHOD_NOT_FOUND ("feature absent" → []) from any other
 // failure (transport blip, JSON-RPC error, malformed body → throw). The
 // caller decides whether to preserve cached state, mark a per-capability
 // retry flag, or fail outright. Every fetch is wrapped in
 // DISCOVERY_FETCH_TIMEOUT_MS so a host that accepts the connection then
 // hangs can't pin the proxy.
+
+// JSON-RPC METHOD_NOT_FOUND — what an MCP server returns when it doesn't
+// support a capability. Treated as "feature absent" (empty list), distinct
+// from a transport blip which the strict variants surface as a throw.
+const METHOD_NOT_FOUND = -32601;
 
 interface InitResponse {
   ok: boolean;
@@ -99,15 +104,13 @@ export async function fetchTools(
   } catch (err) {
     throw new Error(`tools/list returned malformed JSON: ${(err as Error).message}`);
   }
-  const error = (data as { error?: { message?: string } }).error;
-  if (error) throw new Error(`tools/list error: ${error.message ?? JSON.stringify(error)}`);
+  const error = (data as { error?: { code?: number; message?: string } }).error;
+  if (error) {
+    if (error.code === METHOD_NOT_FOUND) return [];
+    throw new Error(`tools/list error: ${error.message ?? JSON.stringify(error)}`);
+  }
   return extractListField<Tool>(data, "tools/list", "tools");
 }
-
-// JSON-RPC METHOD_NOT_FOUND — what an MCP server returns when it doesn't
-// support a capability. Treated as "feature absent" (empty list), distinct
-// from a transport blip which the strict variants surface as a throw.
-const METHOD_NOT_FOUND = -32601;
 
 // Run a tools/prompts/resources-style list call against the upstream and
 // extract the list field. Throws on any transport, parse, or JSON-RPC
@@ -209,12 +212,15 @@ export class DiscoveryError extends Error {
 }
 
 // Single source of truth for the per-server MCP handshake: initialize →
-// notifications/initialized → tools/list (required) → prompts / resources /
-// templates (each optional, recorded as pending on failure). Used by both
-// the runtime discovery path and the pairing-mediated discovery endpoint
-// so the browser sees the same capability set the proxy will see at
-// runtime — including using the real MCP client's capabilities/clientInfo
-// rather than synthetic browser values.
+// notifications/initialized → tools / prompts / resources / templates
+// (each optional — METHOD_NOT_FOUND collapses to [], other failures on
+// prompts/resources/templates are recorded as pending; tools failures
+// other than METHOD_NOT_FOUND are still fatal because tools/list is the
+// canonical "is this server alive" probe). Used by both the runtime
+// discovery path and the pairing-mediated discovery endpoint so the
+// browser sees the same capability set the proxy will see at runtime —
+// including using the real MCP client's capabilities/clientInfo rather
+// than synthetic browser values.
 export async function discoverServerCapabilities(
   targetUrl: string,
   baseHeaders: Record<string, string>,

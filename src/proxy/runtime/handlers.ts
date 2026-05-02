@@ -266,9 +266,14 @@ export class RequestHandlers {
 
   async handleToolDispatch(
     id: string | number,
-    params: { name: string; arguments?: Record<string, unknown>; _meta?: unknown },
+    params: { name?: string; arguments?: Record<string, unknown>; _meta?: unknown } | undefined,
   ): Promise<void> {
-    if (params.name === "configure") {
+    if (!params || typeof params.name !== "string") {
+      this.sendError(ErrorCode.INVALID_PARAMS, "name is required", id);
+      return;
+    }
+    const toolName = params.name;
+    if (toolName === "configure") {
       let text: string;
       try {
         text = await this.pairing.handleConfigure();
@@ -283,14 +288,14 @@ export class RequestHandlers {
       this.sendError(ErrorCode.PROXY_NOT_CONFIGURED, "Call the `configure` tool first.", id);
       return;
     }
-    const route = this.state.toolRoute.get(params.name);
+    const route = this.state.toolRoute.get(toolName);
     if (!route || !isServerSelected(this.state.config, route.hostId, route.serverName)) {
-      this.sendError(ErrorCode.INVALID_PARAMS, `Unknown tool: ${params.name}`, id);
+      this.sendError(ErrorCode.INVALID_PARAMS, `Unknown tool: ${toolName}`, id);
       return;
     }
     // selectedTools is a tool-level filter on top of the server-level gate.
-    if (this.state.config.selectedTools !== undefined && !this.state.config.selectedTools.includes(params.name)) {
-      this.sendError(ErrorCode.INVALID_PARAMS, `Unknown tool: ${params.name}`, id);
+    if (this.state.config.selectedTools !== undefined && !this.state.config.selectedTools.includes(toolName)) {
+      this.sendError(ErrorCode.INVALID_PARAMS, `Unknown tool: ${toolName}`, id);
       return;
     }
     // Preserve `_meta` so the upstream server still sees the agent's

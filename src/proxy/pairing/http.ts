@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer, readBody } from "../../shared/protocol.js";
+import { PAIRING_HEADERS_TIMEOUT_MS, PAIRING_REQUEST_TIMEOUT_MS } from "../core/constants.js";
 import type { PairingConfig, Prompt, Resource, ResourceTemplate, Tool } from "../core/types.js";
 import { SETUP_CSS, SETUP_HTML, SETUP_JS, SETUP_PAGE_CSS } from "./static-assets.js";
 
@@ -90,6 +91,11 @@ export class PairingHttpServer {
   listen(): Promise<number> {
     return new Promise((resolveP, rejectP) => {
       const srv = createServer((req, res) => this.handle(req, res));
+      // Bound the header + body phases so a slow upload can't drag past
+      // PAIRING_WINDOW_MS. Node defaults (60s / 5min) are too generous for
+      // small JSON pairing payloads.
+      srv.headersTimeout = PAIRING_HEADERS_TIMEOUT_MS;
+      srv.requestTimeout = PAIRING_REQUEST_TIMEOUT_MS;
       srv.once("error", rejectP);
       srv.listen(0, "127.0.0.1", () => {
         const addr = srv.address();
@@ -105,6 +111,11 @@ export class PairingHttpServer {
 
   close(): void {
     if (!this.server) return;
+    // server.close() alone only refuses new connections; idle keep-alive
+    // sockets and any in-flight request body would otherwise outlive the
+    // pairing window. closeAllConnections() (Node ≥18.2) hard-drops them
+    // so teardown is bounded by the window, not by the slowest client.
+    this.server.closeAllConnections();
     this.server.close();
     this.server = null;
   }

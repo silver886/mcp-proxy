@@ -5,7 +5,10 @@ import {
   createServer,
   DEFAULT_HOST,
   DEFAULT_PORT,
+  ErrorCode,
   type HostAgentConfig,
+  jsonRpcError,
+  normalizeServerConfig,
   readBody,
   type ServerConfig,
   validateServerName,
@@ -38,27 +41,65 @@ export class HostAgent {
 
   constructor(configPath: string, timeout: number, overrides?: { host?: string; port?: number }) {
     const raw = readFileSync(configPath, "utf-8");
-    this.config = JSON.parse(raw) as HostAgentConfig;
+    const parsed = JSON.parse(raw) as { servers?: unknown; host?: unknown; port?: unknown };
     this.timeout = timeout;
     this.authToken = randomBytes(32).toString("base64url"); // 256-bit token
-    this.boundHost = overrides?.host ?? this.config.host ?? DEFAULT_HOST;
-    // port 0 = let the OS pick. Resolved to the real bound port in start().
-    this.boundPort = overrides?.port ?? this.config.port ?? DEFAULT_PORT;
 
-    // Reject server names that the proxy/page would silently drop later.
-    // Authoritative at config-load time so misnamed servers surface as a
-    // startup error instead of disappearing during discovery.
+    // Single boundary-time validation pass: server-name policy, per-entry
+    // shape, and top-level host/port. Documented defaults (args=[]) are
+    // installed by normalizeServerConfig so downstream consumers can trust
+    // the ServerConfig contract instead of re-checking shapes — without
+    // this, omitting `args` (legal per README) crashes McpSession deep
+    // inside `args.join(" ")`. All reasons are accumulated so a broken
+    // file surfaces a complete diff to fix in one error message rather
+    // than one-issue-per-restart.
     const invalid: string[] = [];
-    for (const name of Object.keys(this.config.servers)) {
-      const reason = validateServerName(name);
-      if (reason) invalid.push(`  - "${name}": ${reason}`);
+    const servers: Record<string, ServerConfig> = {};
+    if (!parsed.servers || typeof parsed.servers !== "object" || Array.isArray(parsed.servers)) {
+      invalid.push(`  - "servers": must be an object map of name to config`);
+    } else {
+      const rawServers = parsed.servers as Record<string, unknown>;
+      if (Object.keys(rawServers).length === 0) {
+        invalid.push(`  - "servers": at least one server must be declared`);
+      }
+      for (const [name, entry] of Object.entries(rawServers)) {
+        const nameReason = validateServerName(name);
+        if (nameReason) invalid.push(`  - "${name}": ${nameReason}`);
+        const result = normalizeServerConfig(entry);
+        if (!result.ok) {
+          for (const reason of result.reasons) invalid.push(`  - "${name}": ${reason}`);
+        } else if (!nameReason) {
+          servers[name] = result.config;
+        }
+      }
+    }
+    if (parsed.host !== undefined && typeof parsed.host !== "string") {
+      invalid.push(`  - "host": must be a string (default: ${DEFAULT_HOST})`);
+    }
+    if (
+      parsed.port !== undefined
+      && (typeof parsed.port !== "number"
+        || !Number.isInteger(parsed.port)
+        || parsed.port < 0
+        || parsed.port > 65535)
+    ) {
+      invalid.push(`  - "port": must be an integer 0–65535 (default: ${DEFAULT_PORT})`);
     }
     if (invalid.length > 0) {
       throw new Error(
-        `Invalid server name(s) in ${configPath}:\n${invalid.join("\n")}\n` +
-        `Rename the entries in config.json so they match the policy.`,
+        `Invalid host config in ${configPath}:\n${invalid.join("\n")}\n` +
+        `Fix the entries in config.json so they match the documented schema.`,
       );
     }
+
+    this.config = {
+      servers,
+      host: typeof parsed.host === "string" ? parsed.host : undefined,
+      port: typeof parsed.port === "number" ? parsed.port : undefined,
+    };
+    this.boundHost = overrides?.host ?? this.config.host ?? DEFAULT_HOST;
+    // port 0 = let the OS pick. Resolved to the real bound port in start().
+    this.boundPort = overrides?.port ?? this.config.port ?? DEFAULT_PORT;
   }
 
   get port(): number {
@@ -228,18 +269,27 @@ export class HostAgent {
     const body = await readBody(req);
     const headerSessionId = req.headers["mcp-session-id"] as string | undefined;
 
-    // Peek the JSON-RPC method without consuming the body. Only `initialize`
-    // may run without an existing session — anything else against an
-    // unknown id is stale (post-GC, post-restart) or wrong, and silently
-    // spawning a fresh uninitialized child for it would violate the MCP
-    // handshake.
-    let method: string | undefined;
+    // Parse once at the HTTP boundary. The host is the JSON-RPC endpoint
+    // from the proxy's perspective, so a malformed body must surface as a
+    // spec-compliant parse-error response with id:null — not get forwarded
+    // to the child as a notification. Without this gate the body falls
+    // through sendRequest's `id === undefined` branch (notification path),
+    // garbage hits stdin, the caller gets a misleading 202, and the
+    // child's parse-error reply arrives with id:null and is dropped as an
+    // orphan — guaranteeing a silent timeout on the proxy.
+    let parsedBody: { method?: string };
     try {
-      method = (JSON.parse(body) as { method?: string }).method;
+      parsedBody = JSON.parse(body) as { method?: string };
     } catch {
-      // Unparseable body falls through as non-initialize → 404 below.
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(jsonRpcError(ErrorCode.PARSE_ERROR, undefined, null));
+      return;
     }
-    const isInitialize = method === "initialize";
+    // Only `initialize` may run without an existing session — anything
+    // else against an unknown id is stale (post-GC, post-restart) or
+    // wrong, and silently spawning a fresh uninitialized child for it
+    // would violate the MCP handshake.
+    const isInitialize = parsedBody.method === "initialize";
 
     let existing: McpSession | undefined;
     if (headerSessionId) {

@@ -17,6 +17,14 @@ export const DISCOVERY_FETCH_TIMEOUT_MS = 15_000;
 export const TOOL_FORWARD_TIMEOUT_MS = 5 * 60 * 1000;
 export const SESSION_DELETE_TIMEOUT_MS = 5_000;
 
+// Pairing HTTP server per-request budgets. Pairing payloads are small JSON
+// blobs (host creds, selected servers/tools), so a slow header or body
+// phase is broken or hostile rather than legitimate. Bounding both prevents
+// a slow upload from outliving PAIRING_WINDOW_MS via Node's defaults
+// (headersTimeout 60s, requestTimeout 5min).
+export const PAIRING_HEADERS_TIMEOUT_MS = 30_000;
+export const PAIRING_REQUEST_TIMEOUT_MS = 60_000;
+
 export const SSE_BACKOFF_INITIAL_MS = 500;
 export const SSE_BACKOFF_MAX_MS = 10_000;
 // Bound the connect+headers phase only. A blackholed tunnel would otherwise
