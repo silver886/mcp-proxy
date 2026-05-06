@@ -1,5 +1,5 @@
 import { ErrorCode, MCP_PROTOCOL_VERSION, PACKAGE_NAME, PACKAGE_VERSION } from "../../shared/protocol.js";
-import { CONFIGURE_PROMPT, CONFIGURE_TOOL } from "../core/constants.js";
+import { CONFIGURE_PROMPT, CONFIGURE_TOOL, RESTART_SERVER_PROMPT, RESTART_SERVER_TOOL } from "../core/constants.js";
 import type { ProxyState } from "../core/state.js";
 import type { ToolRoute } from "../core/types.js";
 import type { DiscoveryRunner } from "../discovery/runner.js";
@@ -13,6 +13,7 @@ import {
 } from "../routing/filtering.js";
 import { unwrapResourceUri } from "../routing/uri.js";
 import type { Forwarder } from "./forwarder.js";
+import { RestartError, type RestartHandler } from "./restart.js";
 import type { UpstreamBridge } from "./upstream-bridge.js";
 
 // One method per JSON-RPC verb the agent can send. Each handler is
@@ -28,6 +29,7 @@ export class RequestHandlers {
     private readonly forwarder: Forwarder,
     private readonly pairing: PairingController,
     private readonly bridge: UpstreamBridge,
+    private readonly restart: RestartHandler,
     private readonly sendResult: (id: string | number | null, result: unknown) => void,
     private readonly sendError: (code: number, detail: string | undefined, id: string | number | null) => void,
   ) {}
@@ -62,25 +64,34 @@ export class RequestHandlers {
 
   async handleToolsList(id: string | number): Promise<void> {
     if (!this.state.config) {
-      this.sendResult(id, { tools: [CONFIGURE_TOOL] });
+      this.sendResult(id, { tools: [CONFIGURE_TOOL, RESTART_SERVER_TOOL] });
       return;
     }
     await this.runner.retryDiscoveryIfNeeded();
     this.sendResult(id, {
-      tools: [CONFIGURE_TOOL, ...getFilteredTools(this.state.config, this.state.hosts, this.state.toolRoute)],
+      tools: [
+        CONFIGURE_TOOL,
+        RESTART_SERVER_TOOL,
+        ...getFilteredTools(this.state.config, this.state.hosts, this.state.toolRoute),
+      ],
     });
   }
 
   async handlePromptsList(id: string | number): Promise<void> {
     if (!this.state.config) {
-      this.sendResult(id, { prompts: [CONFIGURE_PROMPT] });
+      this.sendResult(id, { prompts: [CONFIGURE_PROMPT, RESTART_SERVER_PROMPT] });
       return;
     }
     await this.runner.retryDiscoveryIfNeeded();
-    // Inject CONFIGURE_PROMPT first so re-pairing is always one prompt away
-    // regardless of upstream state.
+    // Inject CONFIGURE_PROMPT and RESTART_SERVER_PROMPT first so re-pair
+    // and wedge-recovery are always one prompt away regardless of upstream
+    // state.
     this.sendResult(id, {
-      prompts: [CONFIGURE_PROMPT, ...getAggregatedPrompts(this.state.config, this.state.hosts, this.state.promptRoute)],
+      prompts: [
+        CONFIGURE_PROMPT,
+        RESTART_SERVER_PROMPT,
+        ...getAggregatedPrompts(this.state.config, this.state.hosts, this.state.promptRoute),
+      ],
     });
   }
 
@@ -105,6 +116,26 @@ export class RequestHandlers {
         messages: [
           { role: "user", content: { type: "text", text: "Show the MCP Proxy setup URL. Do not add any follow-up — do not ask me to let you know or report back." } },
           { role: "assistant", content: { type: "text", text } },
+        ],
+      });
+      return;
+    }
+    if (promptName === "restart_server") {
+      let target: { host: string; server: string };
+      try {
+        target = await this.restart.run(params?.arguments);
+      } catch (err) {
+        if (err instanceof RestartError) {
+          this.sendError(err.code, err.message, id);
+          return;
+        }
+        this.sendError(ErrorCode.INTERNAL, (err as Error).message, id);
+        return;
+      }
+      this.sendResult(id, {
+        messages: [
+          { role: "user", content: { type: "text", text: `Restart ${target.server} on ${target.host}.` } },
+          { role: "assistant", content: { type: "text", text: `Restarted ${target.server} on ${target.host}. Next call will respawn.` } },
         ],
       });
       return;
@@ -282,6 +313,23 @@ export class RequestHandlers {
         return;
       }
       this.sendResult(id, { content: [{ type: "text", text }] });
+      return;
+    }
+    if (toolName === "restart_server") {
+      let target: { host: string; server: string };
+      try {
+        target = await this.restart.run(params.arguments);
+      } catch (err) {
+        if (err instanceof RestartError) {
+          this.sendError(err.code, err.message, id);
+          return;
+        }
+        this.sendError(ErrorCode.INTERNAL, (err as Error).message, id);
+        return;
+      }
+      this.sendResult(id, {
+        content: [{ type: "text", text: `Restarted ${target.server} on ${target.host}. Next call will respawn.` }],
+      });
       return;
     }
     if (!this.state.config) {

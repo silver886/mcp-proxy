@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import treeKill from "tree-kill";
 import { ErrorCode, jsonRpcError, LineBuffer, type ServerConfig } from "../shared/protocol.js";
 import { MAX_QUEUED_NOTIFICATIONS } from "./constants.js";
 
@@ -208,9 +209,34 @@ export class McpSession {
     return !this.destroyed;
   }
 
+  // Idempotent. Three steps, in order:
+  //
+  //   1. Mark destroyed BEFORE failing pending so any synchronous
+  //      sendRequest racing on another tick short-circuits to
+  //      PROCESS_NOT_RUNNING instead of registering into a map we're
+  //      about to drain.
+  //   2. failPending synchronously: don't wait for the child's 'exit'
+  //      handler. A child that ignores SIGTERM (or a shell wrapper that
+  //      swallows it) would otherwise leave callers waiting the full
+  //      per-request timeout. The 'exit' handler's later failPending
+  //      becomes a no-op against the now-empty map.
+  //   3. tree-kill the WHOLE process group, not just the direct child.
+  //      Documented configs use `shell: true` / `npx`, where the real MCP
+  //      server is a grandchild of /bin/sh; a bare process.kill() leaves
+  //      it alive after the shell exits, which would silently break
+  //      restart_server's contract ("session destroyed" but the wedged
+  //      child is still answering on stdin somewhere).
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    if (!this.process.killed) this.process.kill();
+    this.failPending(ErrorCode.PROCESS_EXITED, "session destroyed");
+    if (!this.process.killed && this.process.pid !== undefined) {
+      // Default signal is SIGTERM; tree-kill walks ps/taskkill on
+      // POSIX/Windows and signals every descendant. Errors here mean the
+      // tree is already gone (race with natural exit) — best-effort.
+      treeKill(this.process.pid, (err) => {
+        if (err) console.error(`[${this.name}] tree-kill failed: ${err.message}`);
+      });
+    }
   }
 }

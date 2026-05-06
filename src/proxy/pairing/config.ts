@@ -67,11 +67,12 @@ export function validatePairingConfig(cfg: PairingConfig): PairingConfigValidati
   // server-level allow list never triggered. Catching it here keeps the
   // invariant on the way IN to ProxyServer state.
   //
-  // Server names may themselves contain `__`, so we don't `split` — we
-  // take the prefix before the FIRST `__` as the hostId and require the
-  // remainder (the serverName) to be non-empty so a malformed entry like
-  // `host__` doesn't sneak through as a valid-looking allowlist line that
-  // can never match any real server.
+  // Mirrors the indexOf form used by the selectedTools parser below for
+  // consistency. validateServerName forbids `__` in both the hostId and
+  // the serverName, so a single split on the FIRST `__` is sound; the
+  // remainder must be non-empty so a malformed entry like `host__`
+  // doesn't sneak through as a valid-looking allowlist line that can
+  // never match any real server.
   const validHostIds = new Set(validatedHosts.map((h) => h.id));
   if (cfg.selectedServers) {
     for (const entry of cfg.selectedServers) {
@@ -96,12 +97,13 @@ export function validatePairingConfig(cfg: PairingConfig): PairingConfigValidati
   // actually carry a tool name: an entry whose server prefix isn't in
   // selectedServers (when defined) — or whose hostId isn't a known host
   // (when selectedServers is omitted) — is unreachable noise that hides
-  // bugs in the UI or stale configs. Tool/server names may themselves
-  // contain `__`, so we prefix-match the allowed scope rather than
-  // splitting on the separator. Shape is enforced separately by requiring
-  // at least two `__` occurrences — the prefix-match alone degraded to a
-  // hostId-only check when `selectedServers` was omitted, letting entries
-  // like `host__bogus` survive without a tool segment.
+  // bugs in the UI or stale configs. validateServerName forbids `__` in
+  // host id and server name, but tool names CAN contain `__`, so we
+  // prefix-match the allowed scope rather than splitting on the separator.
+  // Shape is enforced separately by requiring at least two `__` occurrences
+  // — the prefix-match alone degraded to a hostId-only check when
+  // `selectedServers` was omitted, letting entries like `host__bogus`
+  // survive without a tool segment.
   if (cfg.selectedTools) {
     const allowedServerPrefixes = cfg.selectedServers
       ? cfg.selectedServers.map((s) => `${s}${TOOL_SEPARATOR}`)

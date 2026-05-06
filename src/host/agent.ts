@@ -204,6 +204,16 @@ export class HostAgent {
       return;
     }
 
+    if (pathname === "/admin/restart") {
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      await this.handleAdminRestart(req, res);
+      return;
+    }
+
     const match = pathname.match(/^\/servers\/([^/]+)$/);
     if (!match) {
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -395,5 +405,61 @@ export class HostAgent {
     }, SSE_DRAIN_INTERVAL_MS);
 
     req.on("close", () => clearInterval(interval));
+  }
+
+  // POST /admin/restart  body: { "server": "<name>" }
+  // Kills every live session for that server. The next forward from the
+  // proxy will see a 404 (because the session id is gone from the map),
+  // re-`initialize` via the proxy's existing stale-session recovery, and
+  // spawn a fresh child. The host doesn't need to know about hosts/aliases
+  // — it trusts the bearer for scoping.
+  private async handleAdminRestart(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readBody(req);
+    let parsed: { server?: unknown };
+    try {
+      parsed = JSON.parse(body) as { server?: unknown };
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "server is required" }));
+      return;
+    }
+    const serverName = parsed.server;
+    if (typeof serverName !== "string" || serverName.length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "server is required" }));
+      return;
+    }
+    if (!this.config.servers[serverName]) {
+      // Mirror the /servers/:name miss shape (agent.ts:218-221) so the proxy
+      // can forward `available` straight into the LLM-facing error.
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: `Unknown server: ${serverName}`,
+        available: Object.keys(this.config.servers),
+      }));
+      return;
+    }
+    const killed = this.restartServer(serverName);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, killed }));
+  }
+
+  // Destroy + drop every live session belonging to `name`. killed=0 is
+  // success — the post-condition (no live session for this server) is met
+  // either way. McpSession.destroy synchronously fails pending requests
+  // with PROCESS_EXITED (so in-flight forwards resolve immediately rather
+  // than waiting on the per-request timeout) and tree-kills the whole
+  // process group (so `shell: true` / `npx` configs don't leave the real
+  // MCP server alive as a grandchild).
+  private restartServer(name: string): number {
+    let killed = 0;
+    for (const [id, session] of this.sessions) {
+      if (session.serverName !== name) continue;
+      session.destroy();
+      this.sessions.delete(id);
+      killed++;
+    }
+    if (killed > 0) console.log(`[${name}] Restarted: ${killed} session(s) destroyed`);
+    return killed;
   }
 }

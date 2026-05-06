@@ -5,6 +5,7 @@ import { DiscoveryRunner } from "./discovery/runner.js";
 import { PairingController } from "./pairing/controller.js";
 import { Forwarder } from "./runtime/forwarder.js";
 import { RequestHandlers } from "./runtime/handlers.js";
+import { RestartHandler } from "./runtime/restart.js";
 import { SseReader } from "./runtime/sse.js";
 import { UpstreamBridge } from "./runtime/upstream-bridge.js";
 
@@ -69,12 +70,14 @@ export class ProxyServer {
     this.runner = new DiscoveryRunner(this.state, this.sse, log);
     this.forwarder = new Forwarder(this.state, this.runner, log, sendError, writeOut);
     this.pairing = new PairingController(this.state, this.runner, this.bridge, log, sendNotification);
+    const restart = new RestartHandler(this.state);
     this.handlers = new RequestHandlers(
       this.state,
       this.runner,
       this.forwarder,
       this.pairing,
       this.bridge,
+      restart,
       sendResult,
       sendError,
     );

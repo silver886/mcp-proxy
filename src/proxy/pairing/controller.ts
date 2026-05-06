@@ -283,8 +283,9 @@ export class PairingController {
     // to "every advertised host must land at least one server".
     const missing: string[] = [];
     if (cfg.selectedServers) {
-      // Server names may contain `__`, so prefix-match on the FIRST `__`
-      // — same parsing rule used in validatePairingConfig.
+      // validateServerName forbids `__` in host id and server name, so
+      // a single split on the FIRST `__` is sound — same parsing rule
+      // used in validatePairingConfig.
       for (const key of cfg.selectedServers) {
         const sep = key.indexOf("__");
         if (sep <= 0) continue; // shape already gated by validatePairingConfig

@@ -49,3 +49,44 @@ export const CONFIGURE_PROMPT: Prompt = {
   name: "configure",
   description: "Set up or reconfigure the MCP proxy connection.",
 };
+
+// Local tool: kill the host's child process for a wedged MCP server so the
+// next forward re-spawns it. The description teaches the LLM how to format
+// the `tool` argument, since the form it sees in its catalog (wrapped by
+// its MCP client as `mcp__<alias>__...`) is NOT the form the proxy parses.
+export const RESTART_SERVER_TOOL: Tool = {
+  name: "restart_server",
+  description:
+    "Restart a wedged MCP server (kills the host's child process; next call respawns it). "
+    + "Pass `tool` as the proxy-internal name `<host>__<server>__<tool>`. "
+    + "If your tool catalog shows it as `mcp__<alias>__<host>__<server>__<tool>`, strip the `mcp__<alias>__` prefix first. "
+    + "Or pass `host` and `server` directly (visible in every tool's description as `[<host>/<server>]`).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      tool: {
+        type: "string",
+        description: "Proxy-internal tool name <host>__<server>__<tool>. Strip any mcp__<alias>__ wrapper your client adds.",
+      },
+      host: { type: "string", description: "Host id (alternative to tool)." },
+      server: { type: "string", description: "Server name (alternative to tool)." },
+    },
+  },
+};
+
+// Local prompt counterpart. Same handler, same parser — the prompt is just
+// another entry point so an operator can drive a restart from the picker
+// without round-tripping through the LLM's planner.
+export const RESTART_SERVER_PROMPT: Prompt = {
+  name: "restart_server",
+  description: "Restart a wedged MCP server (kills the host's child; next call respawns).",
+  arguments: [
+    {
+      name: "tool",
+      description: "Proxy-internal tool name <host>__<server>__<tool>. Strip any mcp__<alias>__ wrapper your client adds.",
+      required: false,
+    },
+    { name: "host", description: "Host id (alternative to tool).", required: false },
+    { name: "server", description: "Server name (alternative to tool).", required: false },
+  ],
+};
